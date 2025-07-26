@@ -121,3 +121,61 @@ export const getGroupsExpenses = query({
     };
   }
 });
+
+export const getGrouporMembers = query({
+  args: { groupId: v.optional(v.id("groups")) },
+  handler: async (ctx, args) => {
+    const currentUser = await ctx.runQuery(internal.users.getCurrentUser);
+
+    const allGroups = await ctx.db.query("groups").collect();
+    const userGroups = allGroups.filter((g) =>
+      g.members.some((m) => m.userId === currentUser._id)
+    );
+
+    if(args.groupId) {
+      const selectedGroup = userGroups.find((g) => g._id === args.groupId);
+      if(!selectedGroup) throw new Error("Group not found or you are not a member");
+
+      const memberDetails = await Promise.all(
+        selectedGroup.members.map(async (m) => {
+          const user = await ctx.db.get(m.userId);
+          return {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            imageURL: user.imageURL,
+            role: m.role
+          };
+        })
+      );
+
+      const validMembers = memberDetails.filter((m) => m !== null);
+      
+      return {
+        selectedGroup: {
+          id: selectedGroup._id,
+          name: selectedGroup.name,
+          description: selectedGroup.description,
+          createdBy: selectedGroup.createdBy,
+          members: validMembers
+        },
+        groups: userGroups.map((g) => ({
+          id: g._id,
+          name: g.name,
+          description: g.description,
+          memberCount: g.members.length
+        }))
+      };
+    } else {
+      return {
+        selectedGroup: null,
+        groups: userGroups.map((g) => ({
+          id: g._id,
+          name: g.name,
+          description: g.description,
+          memberCount: g.members.length
+        }))
+      };
+    }
+  }
+});
